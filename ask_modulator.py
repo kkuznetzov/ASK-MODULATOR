@@ -55,7 +55,7 @@ carrier_bit_value = 1
 # Preamble (alternating frequency) duration, in bit durations
 # Used for bit synchronization
 # Размер преамбулы, бит
-preamble_bit_size = 32
+preamble_bit_size = 31
 
 # Postamble duration, only needed for Windows player, loses end of wav file
 # Размер постамбулы, бит

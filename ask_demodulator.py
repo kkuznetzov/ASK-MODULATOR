@@ -55,7 +55,7 @@ carrier_bit_value = 1
 # Preamble (alternating frequency) duration, in bit durations
 # Used for bit synchronization
 # Размер преамбулы, бит
-preamble_bit_size = 32
+preamble_bit_size = 31
 
 # Postamble duration, only needed for Windows player, loses end of wav file
 # Размер постамбулы, бит
@@ -166,6 +166,27 @@ envelope_filter_counter_value_middle_bit = 0
 bit_digital_value = 0
 bit_digital_previous_value = 0
 
+# Preamble capture flag, bit value change counter
+# Для поиска преамбулы
+preamble_lock_flag = 0
+bit_value_change_counter = 0
+bit_value_change_lock_threshold = preamble_bit_size // 2
+
+# To search for the word sync
+# Для поиска слова синхронизации
+synchronization_word_bit_counter = 0
+synchronization_word_lock_flag = 0
+
+# Byte counter and bit counter
+# Счётчик байт и счётчик бит
+output_byte_count = 0
+output_bit_count = 0
+
+# Output data, bytes
+# Выходные данные, байты
+byte_value = 0
+output_stream_bytes = []
+
 # Debug
 # Для отладки
 envelope_average_value_0_debug = []
@@ -177,6 +198,13 @@ bit_signal_el_error_value_debug = []
 bit_digital_value_debug_x = []
 bit_digital_value_debug_y = []
 bit_digital_value_debug = []
+preamble_lock_sample_debug = []
+preamble_lock_value_debug = []
+synchro_lock_sample_debug = []
+synchro_lock_value_debug = []
+byte_digital_sample_x_debug = []
+byte_digital_sample_y_debug = []
+byte_digital_value_debug = []
 
 # Loop through input samples
 # Проход по входным отсчётам
@@ -312,11 +340,69 @@ for i in range(int(input_signal_length)):
             bit_digital_value_debug_x.append(i)
             bit_digital_value_debug_y.append(envelope_average_value_1)
 
-    # If the carrier is captured, then we are waiting for the preamble
-    # Если несущая захвачена, то ждём преамбулу
-    if (costas_loop_carrier_lock_flag == 1) and (preamble_lock_flag == 0):
-        # Checking for bit alternation, this is the preamble
-        # Проверка на чередование бит
+    # If the carrier is captured
+    # Если несущая захвачена
+    if envelope_carrier_lock_flag == 1:
+        # We look at the value of the bit at the time of hold
+        # Смотрим значение бита в момент hold
+        if envelope_average_buffer_counter == envelope_filter_counter_value_middle_bit:
+            # Waiting for the preamble
+            # Ждём преамбулу
+            if preamble_lock_flag == 0:
+                # We look at the value of the bit at the time of hold
+                # Смотрим значение бита в момент hold
+                if envelope_average_buffer_counter == envelope_filter_counter_value_middle_bit:
+                    # Checking for bit alternation, this is the preamble
+                    # Проверка на чередование бит
+                    if bit_digital_previous_value != bit_digital_value:
+                        bit_value_change_counter += 1
+                        bit_digital_previous_value = bit_digital_value
+                        if bit_value_change_counter > bit_value_change_lock_threshold:
+                            preamble_lock_flag = 1
+
+                            # Debug
+                            preamble_lock_sample_debug.append(i)
+                            preamble_lock_value_debug.append(envelope_average_value_1)
+
+            # If preamble captured
+            # Если преамбула получена
+            else:
+                # Wait sync word
+                # Ждём слово синхронизации
+                if synchronization_word_lock_flag == 0:
+                    # Synchronization word bit counter
+                    # Счётчик бит слова синхронизации
+                    if bit_digital_value == synchronization_word_bit_value:
+                        synchronization_word_bit_counter += 1
+                    else:
+                        synchronization_word_bit_counter = 0
+
+                    # Comparing counter value with threshold
+                    # Here we fix the capture of the synchronization word
+                    # Сравнение счётчика с порогом
+                    if synchronization_word_bit_counter == synchronization_word_bit_size:
+                        synchronization_word_lock_flag = 1
+                        synchro_lock_sample_debug.append(i)
+                        synchro_lock_value_debug.append(envelope_average_value_1)
+
+                # If sync word are captured
+                # Слово синхронизации получено
+                else:
+                    # Putting a bit into a byte
+                    # Помещаем бит в байт
+                    byte_value = byte_value | (bit_digital_value << output_bit_count)
+
+                    # Bit and byte counters, store byte, reset byte value
+                    # Счётчики бит и байт, сохраняем байт, сброс значения байта
+                    output_bit_count += 1
+                    if output_bit_count == 8:
+                        output_stream_bytes.append(byte_value)
+                        output_bit_count = 0
+                        output_byte_count += 1
+                        byte_digital_sample_x_debug.append(i)
+                        byte_digital_sample_y_debug.append(0.55 + (output_byte_count % 2) / 30)
+                        byte_digital_value_debug.append(byte_value)
+                        byte_value = 0
 
 # Debug
 # Для отладки
@@ -334,6 +420,40 @@ plt.plot(bit_digital_value_debug_x, bit_digital_value_debug_y, 'ro')
 for i in range(len(bit_digital_value_debug_x)):
     plt.annotate(bit_digital_value_debug[i], (bit_digital_value_debug_x[i], bit_digital_value_debug_y[i]), ha='center')
 
+plt.plot(preamble_lock_sample_debug, preamble_lock_value_debug, 'rs')
+for i in range(len(preamble_lock_sample_debug)):
+    x = preamble_lock_sample_debug[i]
+    y = preamble_lock_value_debug[i]
+    if y > 0:
+        yt = y + 0.1
+    else:
+        yt = y - 0.1
+    plt.annotate('preamble lock', xy = (x, y), xytext = (x, yt), arrowprops = dict(facecolor ='green', shrink = 0.05))
+
+plt.plot(synchro_lock_sample_debug, synchro_lock_value_debug, 'rs')
+for i in range(len(synchro_lock_sample_debug)):
+    x = synchro_lock_sample_debug[i]
+    y = synchro_lock_value_debug[i]
+    if y > 0:
+        yt = y + 0.1
+    else:
+        yt = y - 0.1
+    plt.annotate('sync lock', xy = (x, y), xytext = (x, yt), arrowprops = dict(facecolor ='green', shrink = 0.05))
+
+plt.plot(byte_digital_sample_x_debug, byte_digital_sample_y_debug, 'rs')
+for i in range(len(byte_digital_sample_x_debug)):
+    plt.annotate("0x{0:x}".format(byte_digital_value_debug[i]), (byte_digital_sample_x_debug[i], byte_digital_sample_y_debug[i]), ha='center')
+    # plt.axvline(byte_digital_sample_x_debug[i], color='y', linestyle='dotted', label='axvline - full height')
+
 plt.grid()
 plt.show()
 
+# Convert to uint8
+# Преобразуем в uint8
+output_stream_bytes_uint8 = np.uint8(output_stream_bytes)
+
+# Write the data file
+# Записываем файл с данными
+file = open(data_file_out_name, "wb")
+file.write(output_stream_bytes_uint8)
+file.close()

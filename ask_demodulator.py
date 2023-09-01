@@ -18,7 +18,7 @@ import os
 
 # Input wav file
 # Имя входного wav файла
-wav_file_name = 'wav\\ask_out.wav'
+wav_file_name = 'wav\\ask_and_noise.wav'
 wav_file_name = os.path.join(os.path.dirname(__file__), wav_file_name)
 
 # Name of the output data file
@@ -156,6 +156,7 @@ bit_signal_el_value_error = 0
 bit_signal_el_time_hold = round(bit_samplerate_period_per_bit / 2)
 bit_signal_el_time_early = round(bit_signal_el_time_hold - bit_samplerate_period_per_bit / 4)
 bit_signal_el_time_late = round(bit_signal_el_time_hold + bit_samplerate_period_per_bit / 4)
+bit_signal_el_error_threshold = 0.05
 
 # Envelope filter counter number in which the middle of the bit is located
 # Номер счётчика фильтра огибающей в котором находиться середина бита
@@ -321,7 +322,7 @@ for i in range(int(input_signal_length)):
 
             # Continuously update the mid-bit time value
             # Постоянно обновляем значение середины бита
-            if bit_signal_el_value_error == 0:
+            if abs(bit_signal_el_value_error) <= bit_signal_el_error_threshold:
                 envelope_filter_counter_value_middle_bit = round(bit_signal_el_time_hold)
 
         # We look at the value of the bit at the time of hold
